@@ -5,6 +5,7 @@ import { isFullAdmin } from "./authSecurity";
 import crypto from "crypto";
 import { Resend, buildEmailHtml } from "./helpers";
 import { FEEDBACK_PAGE } from "./feedback_routes";
+import { publicSiteUrl } from "./siteUrl"; // v388
 
 // Support ticket routes: replying to a ticket, fetching a ticket's
 // messages, listing a user's own tickets, and creating a new ticket
@@ -162,7 +163,7 @@ export function setupSupportRoutes(
         try {
           const resendClient = new Resend(apiKey);
           const fromEmail = process.env.RESEND_FROM_EMAIL || "Ybex Support <noreply@ybexmedia.in>";
-          const appUrl = process.env.APP_URL || 'https://ybexmedia.in';
+          const appUrl = publicSiteUrl(); // v388
 
           const emailHtml = buildEmailHtml({
             title: `Support Resolution: Ticket #${ticketId.slice(0, 8)}`,

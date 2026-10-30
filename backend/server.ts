@@ -1660,15 +1660,18 @@ app.use((req, res, next) => {
         // is remembered for a few seconds (authLookupCache.ts). The user row is always fresh.
         const user = await authLookup.resolve(token, {
           sessionUserId: async () => {
-            const { data: sess } = await safePromiseTimeout(
+            // v388 (QA: "Supabase ka ek transient error / 15 s timeout bhi sabko logout kar deta hai"): an error or a timeout used to
+            // look exactly like "no such session" → 403 → the app wiped the login. Now it is told apart: throw → req._authDbError → /auth/me says 503.
+            const { data: sess, error: sessErr } = await safePromiseTimeout(
               authDb
                 .from('user_sessions')
                 .select('user_id, expires_at')
                 .eq('session_token', token)
                 .maybeSingle(),
               15000,
-              { data: null, error: null }
+              { data: null, error: { message: 'timeout' } as any }
             );
+            if (sessErr) throw new Error('AUTH_DB_UNAVAILABLE');
             if (!sess?.user_id) return null;
             // Session 58 (Ravi): logins expire after 30 days without use; each day of use renews it.
             const exp = sess.expires_at ? Date.parse(sess.expires_at) : NaN;
@@ -1682,15 +1685,16 @@ app.use((req, res, next) => {
             return sess.user_id;
           },
           userRow: async (sess) => {
-            const { data: user } = await safePromiseTimeout(
+            const { data: user, error: userErr } = await safePromiseTimeout(
               authDb
                 .from('users')
                 .select('*')
                 .eq('user_id', sess.user_id)
                 .maybeSingle(),
               15000,
-              { data: null, error: null }
+              { data: null, error: { message: 'timeout' } as any }
             );
+            if (userErr) throw new Error('AUTH_DB_UNAVAILABLE'); // v388: see above
             return user || null;
           },
         });
@@ -1708,8 +1712,9 @@ app.use((req, res, next) => {
         // There used to be a "direct user_id fallback" here: a bearer token equal to any
         // user_id logged in as that user. User ids appear in API responses, so anyone could
         // act as anyone, admins included. Only real session tokens are accepted now.
-      } catch (err) {
+      } catch (err: any) {
         console.error("parseAuthUser Supabase error:", err);
+        if (String(err?.message || "").includes('AUTH_DB_UNAVAILABLE')) { try { req._authDbError = true; } catch { /* frozen req */ } } // v388
       }
     }
 
@@ -3519,9 +3524,18 @@ app.use((req, res, next) => {
     const distPath = fs.existsSync(path.join(process.cwd(), 'dist', 'client', 'index.html'))
       ? path.join(process.cwd(), 'dist', 'client')
       : path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    // v388 (QA): the hashed build files under /assets never change, so browsers and the edge may keep them for a year
+    // (the SW / index.html / manifest are outside /assets and stay fresh).
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (/[\\/]assets[\\/]/.test(filePath) && /\.(js|css|woff2?|png|jpe?g|webp|svg|ico)$/i.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      },
+    }));
     // v295: robots.txt, sitemap.xml and per-article SEO tags for /blog and /blog/:slug (backend/blogSeo.ts)
     setupBlogSeoRoutes(app, { getClient: () => privilegedSupabase || supabase, distPath });
+    // v388 (QA: after a deploy a phone with the OLD page asked for an old hashed chunk, got index.html with status 200, the import failed in a
+    // loop): a missing /assets file is a real 404, so the app's "new version" recovery can kick in.
+    app.get(/^\/assets\//, (_req, res) => { res.status(404).type('text/plain').send('Not found'); });
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

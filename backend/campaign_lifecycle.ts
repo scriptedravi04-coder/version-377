@@ -1,5 +1,6 @@
 import { logIgnored } from "./logIgnored";
 import { feeAtPaymentTime } from "./stampedFee";
+import { netAfterPartialRefund } from "./adminMoney"; // v389
 import { emitThreadEvent, emitAdminEvent } from "./socketAccess";
 import express from "express";
 import crypto from "crypto";
@@ -280,7 +281,7 @@ export function createCampaignLifecycleHandlers({
           // so one deal could show the creator's payout more than once.
           const { data } = await (privilegedSupabase || supabase)
             .from('transactions')
-            .select('id, deal_id, campaign_deal_id, status, payout_status, refund_amount, refund_status, refunded_at, escrow_hold')
+            .select('id, deal_id, campaign_deal_id, status, payout_status, refund_amount, refund_status, refunded_at, escrow_hold, gross_amount, brand_paid_amount, brand_fee_amount, brand_fee_gst, fee_correction_note') // v389: the paid amount + refund split are needed to tell a PART-refunded deposit from a refund row
             .or(`campaign_deal_id.eq.${campaignDealId},deal_id.eq.${campaignDealId}`);
           const depositRows = (data || []).filter(isEscrowDepositRow);
 
@@ -296,7 +297,8 @@ export function createCampaignLifecycleHandlers({
               // The fee and net payout belong to the deal once, not to every row.
               if (i === 0) {
                 txUpdate.platform_fee_amount = platformFee;
-                txUpdate.creator_net_amount = netAmount;
+                // v389 (QA, Ravi OK): minus a processed part-refund to the brand — the creator is not paid the refunded part twice.
+                txUpdate.creator_net_amount = netAfterPartialRefund(tx, netAmount);
               }
               const { error: txErr } = await (privilegedSupabase || supabase)
                 .from('transactions')
@@ -343,7 +345,7 @@ export function createCampaignLifecycleHandlers({
         tx.payout_status = 'RELEASED';
         tx.status = 'SUCCESS';
         tx.platform_fee_amount = platformFee;
-        tx.creator_net_amount = netAmount;
+        tx.creator_net_amount = netAfterPartialRefund(tx, netAmount); // v389
         tx.payout_completed_at = nowIso;
       }
     }
@@ -1323,6 +1325,25 @@ export function createCampaignLifecycleHandlers({
       sender_role: 'brand'
     };
     db.chat_messages.push(storedRevisionMsg);
+
+    // v389 (QA, Ravi OK 30 Oct): "Brand needs changes" reached the creator only if the chat was open. Same notification row the approve step writes.
+    if (creatorId) {
+      const revNotif = {
+        id: `notif_${crypto.randomUUID().slice(0, 10)}`,
+        user_id: creatorId,
+        type: 'deal_revision_requested',
+        title: 'The brand asked for changes ✏️',
+        message: notes ? `Changes requested: ${String(notes).slice(0, 140)}` : 'The brand requested changes to your draft. Open the chat to see what to fix.',
+        link: `/messages/${targetThreadId}`,
+        read: false,
+        created_at: now
+      };
+      if (supabase) {
+        try { await (privilegedSupabase || supabase).from('notifications').insert(revNotif); } catch (e: any) { logIgnored("campaign_lifecycle:revision-notif", e); }
+      }
+      if (!db.notifications) db.notifications = [];
+      db.notifications.push(revNotif);
+    }
 
     saveDb(db);
 

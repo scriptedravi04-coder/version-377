@@ -28,6 +28,15 @@ import { saveProgress } from "../../lib/onboardingProgress"; // v376: Instagram 
 //      to /challenge?joined=1; 6. Meta CompleteRegistration fires the moment the account is made.
 const IG_RE = /^[a-z0-9._]{1,30}$/;
 const cleanIg = (v) => String(v || "").trim().replace(/^.*instagram\.com\//i, "").replace(/^@+/, "").replace(/[/?#\s].*$/, "").toLowerCase();
+/** v388 (QA: "+91 98765 43210" pasted into the WhatsApp box was cut to "91 98765 432" BEFORE cleaning → wrong number): clean first
+ *  (digits only), drop a leading 91 / 0 only when there are MORE than 10 digits (so a real number that starts with 91 is safe),
+ *  then cap at 10. Pure. */
+export const waClean = (v) => {
+  let d = String(v || "").replace(/\D/g, "");
+  if (d.length > 10 && d.startsWith("0")) d = d.slice(1);   // 0 98765 43210
+  if (d.length > 10 && d.startsWith("91")) d = d.slice(2);  // +91 98765 43210 (also 091 …)
+  return d.slice(0, 10);
+};
 const mobile10 = (v) => { let d = String(v || "").replace(/\D/g, ""); if (d.length === 12 && d.startsWith("91")) d = d.slice(2); if (d.length === 11 && d.startsWith("0")) d = d.slice(1); return d; };
 /** Android in-app browser → the same page in Chrome (Google sign-in works there). "" elsewhere. */
 export function chromeIntentUrl(href, ua = typeof navigator !== "undefined" ? navigator.userAgent : "") {
@@ -663,7 +672,7 @@ export default function AppContinue() {
                   </div>
                   <div className={`flex items-center h-[56px] rounded-2xl bg-white border ${fieldErr === "whatsapp" ? "border-[#DC2626]" : "border-[#E5E2EE]"} focus-within:border-[#7C3AED] focus-within:ring-4 focus-within:ring-[#7C3AED]/10`}>
                     <span className="pl-4 pr-2 text-[17px] text-[#6B7280]">+91</span>
-                    <input value={waNumber} onChange={(e) => { setWaNumber(e.target.value.replace(/[^\d ]/g, "").slice(0, 12)); setFieldErr(""); }}
+                    <input value={waNumber} onChange={(e) => { setWaNumber(waClean(e.target.value)); setFieldErr(""); }}
                       inputMode="numeric" autoComplete="tel-national" placeholder="WhatsApp number" aria-label="WhatsApp number"
                       className="flex-1 h-full bg-transparent pr-4 text-[17px] outline-none" data-testid="app-join-whatsapp" />
                   </div>

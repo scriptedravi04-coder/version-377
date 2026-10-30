@@ -178,6 +178,11 @@ export default function Layout({ children }) {
     // /creator/deals, …) showed "Showcase What Makes You Different. This is how brands see you." under them.
     const OWN_CREATOR_PAGES = ["notifications", "deals", "inbox", "kyc", "settings", "profile", "ugc", "refer", "dashboard"];
     if (/^\/creator\/[^/]+$/.test(path) && !OWN_CREATOR_PAGES.includes(path.split("/")[2])) { // CreatorPublicView
+      // v388 (QA): "Showcase What Makes You Different. This is how brands see you." is a note for the creator themselves — brands and
+      // visitors looking at somebody's public profile no longer see it.
+      const pid = path.split("/")[2];
+      const mine = Boolean(user) && [user.user_id, user.creator_id, user.public_id, user.username, user.handle].filter(Boolean).map(String).includes(pid);
+      if (!mine) return null;
       return { headline: ["Showcase What Makes", "You Different."], subtitle: "This is how brands see you.", showInstagram: false };
     }
     if (path.startsWith("/info/")) {

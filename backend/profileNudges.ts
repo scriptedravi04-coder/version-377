@@ -67,9 +67,9 @@ export async function runProfileNudges(client: any, kick: () => void, now = Date
 
   const users: any[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await client.from("users").select("user_id, role, banned, is_deleted").eq("role", "creator").range(from, from + 999);
+    const { data, error } = await client.from("users").select("user_id, role, banned, is_deleted, auth_method").eq("role", "creator").range(from, from + 999);
     if (error || !data?.length) break;
-    users.push(...data.filter((u: any) => u.banned !== true && u.is_deleted !== true));
+    users.push(...data.filter((u: any) => u.banned !== true && u.is_deleted !== true && u.auth_method !== "unclaimed")); // v388: CSV-imported "ghost" profiles never signed up — they ate the 300/run cap (QA: 83 of 94)
     if (data.length < 1000) break;
   }
   let sentCount = 0;

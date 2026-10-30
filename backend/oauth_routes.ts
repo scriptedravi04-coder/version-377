@@ -3,6 +3,7 @@ import { SESSION_MS } from "./authSecurity";
 import crypto from "crypto";
 import axios from "axios";
 import { newSessionToken, escapeLike, pickLoginUser, sessionCookieOptions } from "./authSecurity";
+import { cleanEnvVal } from "./envBundle"; // v385
 import { ephemeralSet, ephemeralTake } from "./ephemeralStore"; // v378: iPhone Home Screen app sign-in hand-off
 
 // Session 43 (v286, Ravi): "Continue with Google" (iPhone + Android) and "Continue with Apple"
@@ -43,13 +44,13 @@ export function googleIdTokenOk(info: any, allowedAud: string[], now = Date.now(
   if (!(Number(info.exp) * 1000 > now)) return false;
   return Boolean(info.email) && (info.email_verified === true || info.email_verified === "true");
 }
-export function makeState(role: string | null, now = Date.now(), secret = stateSecret(), native = false, handoff = "") {
+export function makeState(role: string | null, now = Date.now(), secret = stateSecret(), native = false, handoff = "", redirectUri = "") {
   // v335: a = 1 → started inside the iPhone app (Capacitor); the callback sends the person back into the app.
-  const body = b64u(JSON.stringify({ r: ROLES.has(String(role)) ? role : null, n: crypto.randomBytes(9).toString("hex"), t: now, ...(native ? { a: 1 } : {}), ...(HANDOFF_RE.test(handoff) ? { h: handoff } : {}) }));
+  const body = b64u(JSON.stringify({ r: ROLES.has(String(role)) ? role : null, n: crypto.randomBytes(9).toString("hex"), t: now, ...(native ? { a: 1 } : {}), ...(HANDOFF_RE.test(handoff) ? { h: handoff } : {}), ...(/^https:\/\/[^\s]{1,300}$/.test(redirectUri) ? { u: redirectUri } : {}) }));
   const sig = b64u(crypto.createHmac("sha256", secret).update(body).digest());
   return `${body}.${sig}`;
 }
-export function readState(state: string, now = Date.now(), secret = stateSecret()): { r: string | null; n: string; native?: boolean; h?: string } | null {
+export function readState(state: string, now = Date.now(), secret = stateSecret()): { r: string | null; n: string; native?: boolean; h?: string; u?: string } | null {
   const [body, sig] = String(state || "").split(".");
   if (!body || !sig) return null;
   const want = b64u(crypto.createHmac("sha256", secret).update(body).digest());
@@ -58,7 +59,7 @@ export function readState(state: string, now = Date.now(), secret = stateSecret(
   try {
     const p = JSON.parse(fromB64u(body).toString("utf8"));
     if (!p || typeof p.t !== "number" || now - p.t > STATE_TTL_MS || p.t - now > 60000) return null;
-    return { r: ROLES.has(p.r) ? p.r : null, n: String(p.n || ""), ...(p.a === 1 ? { native: true } : {}), ...(HANDOFF_RE.test(String(p.h || "")) ? { h: String(p.h) } : {}) };
+    return { r: ROLES.has(p.r) ? p.r : null, n: String(p.n || ""), ...(p.a === 1 ? { native: true } : {}), ...(HANDOFF_RE.test(String(p.h || "")) ? { h: String(p.h) } : {}), ...(/^https:\/\/[^\s]{1,300}$/.test(String(p.u || "")) ? { u: String(p.u) } : {}) };
   } catch {
     return null;
   }
@@ -189,9 +190,11 @@ export function setupOAuthRoutes(
   router.get("/auth/oauth/url", (req, res) => {
     const provider = String(req.query.provider || "");
     if (!PROVIDERS.has(provider)) return res.status(400).json({ error: "Unknown sign-in option." });
-    const state = makeState(String(req.query.role || ""), Date.now(), stateSecret(), String(req.query.app || "") === "native", String(req.query.handoff || ""));
+    // v385: the redirect URI used here is signed into the state and reused for the token exchange (must be identical).
+    const redirectUri = `${origin(req)}/api/auth/oauth/${provider}/callback`;
+    const state = makeState(String(req.query.role || ""), Date.now(), stateSecret(), String(req.query.app || "") === "native", String(req.query.handoff || ""), redirectUri);
     if (provider === "google") {
-      const client_id = process.env.GOOGLE_CLIENT_ID;
+      const client_id = cleanEnvVal(process.env.GOOGLE_CLIENT_ID);
       if (!client_id) return res.status(503).json({ error: "Google sign-in is not set up yet. Please use your email for now." });
       // v291 (Ravi: iPhone asks to type the Google ID, no account list): the installed iPhone app has
       // no Google cookies, so Google cannot list accounts. If the app knows an e-mail (last login, or the
@@ -199,16 +202,16 @@ export function setupOAuthRoutes(
       const hint = String(req.query.hint || "").trim().toLowerCase();
       const validHint = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hint) && hint.length <= 254;
       const q = new URLSearchParams({
-        client_id, redirect_uri: `${origin(req)}/api/auth/oauth/google/callback`, response_type: "code",
+        client_id, redirect_uri: redirectUri, response_type: "code",
         scope: "openid email profile", state,
         ...(validHint ? { login_hint: hint } : { prompt: "select_account" }),
       });
       return res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${q.toString()}` });
     }
-    const client_id = process.env.APPLE_CLIENT_ID;
+    const client_id = cleanEnvVal(process.env.APPLE_CLIENT_ID);
     if (!client_id) return res.status(503).json({ error: "Apple sign-in is not set up yet. Please use your email for now." });
     const q = new URLSearchParams({
-      client_id, redirect_uri: `${origin(req)}/api/auth/oauth/apple/callback`, response_type: "code id_token",
+      client_id, redirect_uri: redirectUri, response_type: "code id_token",
       response_mode: "form_post", scope: "name email", state,
     });
     return res.json({ url: `https://appleid.apple.com/auth/authorize?${q.toString()}` });
@@ -233,7 +236,7 @@ export function setupOAuthRoutes(
   // iPhone app the phone's own Google account picker (@capgo/capacitor-social-login) gives an ID token; we check it with
   // Google and start the same session as the browser flow. Older app builds without the plugin keep the browser flow.
   router.get("/auth/oauth/google/native-config", (_req, res) => {
-    res.json({ web: process.env.GOOGLE_CLIENT_ID || "", ios: process.env.GOOGLE_IOS_CLIENT_ID || "" });
+    res.json({ web: cleanEnvVal(process.env.GOOGLE_CLIENT_ID), ios: cleanEnvVal(process.env.GOOGLE_IOS_CLIENT_ID) });
   });
   router.post("/auth/oauth/google/native", express.json({ limit: "16kb" }), async (req, res) => {
     const idToken = String(req.body?.idToken || "");
@@ -241,7 +244,7 @@ export function setupOAuthRoutes(
     if (!idToken || idToken.length > 4096) return res.status(400).json({ error: "google" });
     try {
       const info = (await axios.get("https://oauth2.googleapis.com/tokeninfo", { params: { id_token: idToken }, timeout: 10000 })).data || {};
-      const allowed = [process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID, process.env.GOOGLE_ANDROID_CLIENT_ID].filter(Boolean);
+      const allowed = [process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID, process.env.GOOGLE_ANDROID_CLIENT_ID].map(cleanEnvVal).filter(Boolean);
       if (!googleIdTokenOk(info, allowed)) return res.status(401).json({ error: "google" });
       const r = await oauthSignInCore({ supabase, privilegedSupabase, getDb, saveDb }, { email: String(info.email), name: String(info.name || ""), picture: String(info.picture || ""), provider: "google", role });
       if (!r.ok) return res.status(r.error === "banned" || r.error === "deleted" || r.error === "admin" ? 403 : 500).json({ error: r.error });
@@ -267,16 +270,19 @@ export function setupOAuthRoutes(
     if (!st || !req.query.code) return back(req, res, { error: req.query.error ? "cancelled" : "state" }, Boolean(st?.native));
     try {
       const tok = await axios.post("https://oauth2.googleapis.com/token", {
-        client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, code: String(req.query.code),
-        redirect_uri: `${origin(req)}/api/auth/oauth/google/callback`, grant_type: "authorization_code",
+        client_id: cleanEnvVal(process.env.GOOGLE_CLIENT_ID), client_secret: cleanEnvVal(process.env.GOOGLE_CLIENT_SECRET), code: String(req.query.code),
+        redirect_uri: st.u || `${origin(req)}/api/auth/oauth/google/callback`, grant_type: "authorization_code",
       }, { timeout: 10000 });
       const info = await axios.get("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: `Bearer ${tok.data.access_token}` }, timeout: 10000 });
       const pr = info.data || {};
       if (!pr.email || pr.email_verified === false) return back(req, res, { error: "no_email" }, Boolean(st.native));
       return await signIn(req, res, { email: pr.email, name: pr.name || "", picture: pr.picture || "", provider: "google", role: st.r, native: Boolean(st.native), handoff: st.h });
     } catch (e: any) {
-      console.error("[oauth] google:", e?.response?.data || e?.message || e);
-      return back(req, res, { error: "google" }, Boolean(st.native));
+      const gErr = e?.response?.data || {};
+      console.error("[oauth] google:", gErr || e?.message || e);
+      // v385: Google's reason (invalid_client / redirect_uri_mismatch / invalid_grant) travels to the error page as a short code.
+      const reason = String(gErr.error || "").replace(/[^a-z_]/g, "").slice(0, 40);
+      return back(req, res, { error: "google", ...(reason ? { reason } : {}) }, Boolean(st.native));
     }
   });
 

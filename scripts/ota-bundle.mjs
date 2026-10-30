@@ -11,7 +11,7 @@ const ROOT = process.cwd();
 const DIST = fs.existsSync(path.join(ROOT, "dist", "client", "index.html")) ? path.join(ROOT, "dist", "client") : path.join(ROOT, "dist");
 const OUT = path.join(DIST, "ota");
 // Not needed inside the iPhone app: the website landing page photos, older OTA zips, the service worker.
-const SKIP = [/^ota\//, /^landing\//, /^sw\.js$/, /^workbox-.*\.js$/, /^registerSW\.js$/, /\.map$/];
+const SKIP = [/^ota\//, /^landing\//, /^splash\//, /^sw\.js$/, /^workbox-.*\.js$/, /^registerSW\.js$/, /\.map$/];
 
 const CRC = (() => {
   const t = new Uint32Array(256);

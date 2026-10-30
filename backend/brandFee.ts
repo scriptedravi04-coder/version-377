@@ -12,18 +12,24 @@ import { calculateFee, isSplitFee } from "../src/utils/feeCalculator";
 import { logIgnored } from "./logIgnored";
 
 let cache: { at: number; row: any } | null = null;
-export function __resetFeeConfigCache() { cache = null; }
+let lastGood: any = null; // v388: the last config that was read successfully
+export function __resetFeeConfigCache() { cache = null; lastGood = null; }
 
 export async function loadFeeConfig(client: any, maxAgeMs = 30000): Promise<any> {
   if (cache && Date.now() - cache.at < maxAgeMs) return cache.row;
   let row: any = null;
+  let failed = false;
   if (client) {
     try {
       const { data, error } = await client.from("platform_fee_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
-      if (!error && data) row = data;
-    } catch (e: any) { logIgnored("brandFee:config", e); }
+      if (error) failed = true; else if (data) row = data;
+    } catch (e: any) { failed = true; logIgnored("brandFee:config", e); }
   }
-  cache = { at: Date.now(), row };
+  // v388 (QA: one Supabase hiccup while a brand paid cached "no config" for 30 s → old model: brand 0%, creator 15% stamped on the deal):
+  // a FAILED read never replaces the last good config; it is retried after 3 s, and until then the last good row is used.
+  if (failed && lastGood) { cache = { at: Date.now() - Math.max(0, maxAgeMs - 3000), row: lastGood }; return lastGood; }
+  if (!failed && row) lastGood = row;
+  cache = { at: failed ? Date.now() - Math.max(0, maxAgeMs - 3000) : Date.now(), row };
   return row;
 }
 /** Sync view of the last loaded config (for hot paths like rate-card markup). */

@@ -7,6 +7,8 @@ import express from "express";
 import { audienceEstimate } from "../src/utils/audienceEstimate";
 import crypto from "crypto";
 import { transformRateCard, Resend, buildEmailHtml, getValidFromEmail } from "./helpers";
+import { maskContactDetails } from "./contactSecurityFilter"; // v389
+import { publicSiteUrl } from "./siteUrl"; // v389
 
 // Public creator-facing and creator-discovery routes: creator profile
 // creation, public creator listing/search, viewing a single creator's
@@ -1602,22 +1604,27 @@ export function setupCreatorsRoutes(
     }
 
     // Email outreach if configured
-    const appUrl = process.env.APP_URL || "https://ybex.club";
+    const appUrl = publicSiteUrl(); // v389: was APP_URL || "https://ybex.club" — never the hosting address or a foreign domain
     const apiKey = process.env.RESEND_API_KEY;
+
+    // v389 (QA, Ravi OK 30 Oct): the brand's own words went into the email as raw HTML (a brand could send <a href=evil> or a phone number from
+    // collabs@ybexmedia.in, past the chat's contact filter). Every brand-written value is escaped; the free text also gets the chat's contact masking.
+    const escH = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const mailText = (v: any) => escH(maskContactDetails(String(v ?? "")));
 
     if (apiKey && creatorEmail) {
       try {
         const resendClient = new Resend(apiKey);
         const emailHtml = buildEmailHtml({
           title: "New Campaign Invitation Received",
-          greeting: `Hi ${creatorName},`,
+          greeting: `Hi ${escH(creatorName)},`,
           paragraphs: [
-            `<strong>${brandName}</strong> has sent you a campaign collaboration invitation on YBEX!`,
-            `<strong>Campaign:</strong> ${formattedTitle}`,
-            `<strong>Offered Budget:</strong> ${formattedBudget}`,
-            `<strong>Deliverables (${deliverablesCount}):</strong> ${formattedDeliverables}`,
-            `<strong>Timeline:</strong> ${formattedTimeline}`,
-            `<strong>Pitch / Notes:</strong> "${formattedPitch}"`
+            `<strong>${escH(brandName)}</strong> has sent you a campaign collaboration invitation on YBEX!`,
+            `<strong>Campaign:</strong> ${mailText(formattedTitle)}`,
+            `<strong>Offered Budget:</strong> ${escH(formattedBudget)}`,
+            `<strong>Deliverables (${deliverablesCount}):</strong> ${mailText(formattedDeliverables)}`,
+            `<strong>Timeline:</strong> ${mailText(formattedTimeline)}`,
+            `<strong>Pitch / Notes:</strong> "${mailText(formattedPitch)}"`
           ],
           button: {
             text: isRegistered ? "Review Invitation in Dashboard" : "Claim Profile & Review Invitation",
@@ -1628,7 +1635,7 @@ export function setupCreatorsRoutes(
         await resendClient.emails.send({
           from: getValidFromEmail("YBEX Collaborations <collabs@ybexmedia.in>"),
           to: creatorEmail,
-          subject: `✨ Campaign Invitation from ${brandName}: ${formattedTitle}`,
+          subject: `✨ Campaign Invitation from ${String(brandName).replace(/[\r\n]+/g, " ").slice(0, 80)}: ${String(formattedTitle).replace(/[\r\n]+/g, " ").slice(0, 100)}`,
           html: emailHtml
         });
       } catch (emailErr) {

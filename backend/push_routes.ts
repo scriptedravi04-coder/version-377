@@ -345,6 +345,12 @@ export function setupPushRoutes(
     // window behind the cursor — a row stamped earlier but saved later was skipped for good. push_log stops doubles.
     const LOOKBACK_MS = 2 * 60 * 1000;
     let cursor = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    // v388 (QA: after a burst of 200+ notifications with the SAME created_at — profile nudges, send-to-all — the cursor stopped on the
+    // 200th row, every tick re-read the same 200 and the push loop never moved on): when a batch is FULL the next read continues from the
+    // (created_at, id) pair of its last row instead of looking back, and up to 5 full batches are drained per tick.
+    let cursorId: string | null = null;
+    let lastFull = false;
+    const BATCH = 200;
     let busy = false;
     const tick = async () => {
       if (busy) return;
@@ -354,10 +360,16 @@ export function setupPushRoutes(
         const { data: due } = await sb().from("push_campaigns").select("*").is("sent_at", null).not("send_at", "is", null).lte("send_at", now).limit(5);
         for (const c of due || []) await runCampaign(c);
 
-        const { data: fresh, error } = await sb().from("notifications").select("id, user_id, title, message, link, created_at")
-          .gt("created_at", new Date(Date.parse(cursor) - LOOKBACK_MS).toISOString()).order("created_at", { ascending: true }).limit(200);
-        if (!error && fresh && fresh.length) {
+        for (let pass = 0; pass < 5; pass++) {
+          let q = sb().from("notifications").select("id, user_id, title, message, link, created_at");
+          q = lastFull && cursorId !== null
+            ? q.or(`created_at.gt.${cursor},and(created_at.eq.${cursor},id.gt.${cursorId})`)
+            : q.gt("created_at", new Date(Date.parse(cursor) - LOOKBACK_MS).toISOString());
+          const { data: fresh, error } = await q.order("created_at", { ascending: true }).order("id", { ascending: true }).limit(BATCH);
+          if (error || !fresh || !fresh.length) { lastFull = false; break; }
           cursor = fresh[fresh.length - 1].created_at;
+          cursorId = String(fresh[fresh.length - 1].id);
+          lastFull = fresh.length >= BATCH;
           for (const n of fresh) {
             if (!n.user_id || !n.id) continue;
             // One push per notification even if the app runs on more than one server: the first
@@ -368,6 +380,7 @@ export function setupPushRoutes(
               .select("ref");
             if (mine && mine.length) await sendToUsers([n.user_id], payloadFromNotification(n));
           }
+          if (!lastFull) break;
         }
       } catch (e: any) {
         console.error("[push] loop:", e?.message || e);

@@ -5,6 +5,7 @@ import { logIgnored } from "../logIgnored";
 import { Resend, buildEmailHtml } from "../helpers";
 import { ADMIN_ROOM } from "../socketAccess";
 import { toAdminRefundSnapshot } from "../ugcRefundAccounts";
+import { publicSiteUrl } from "../siteUrl"; // v388: emails link to ybexmedia.in, never the AI Studio address
 
 
 /** Session 56: lower a brief's max_creators by one, safely when two cancels land together
@@ -153,7 +154,7 @@ export function buildReminderCopy({
   brand,
   creator,
   now = new Date(),
-  appBaseUrl = process.env.APP_URL || "https://ybexmedia.in"
+  appBaseUrl = publicSiteUrl()
 }: {
   reminderIndex: number; // 1 to 6
   order: UgcOrderRecord;
@@ -210,7 +211,7 @@ export function buildCreatorExpiredCopy({
   order,
   brief,
   creator,
-  appBaseUrl = process.env.APP_URL || "https://ybexmedia.in"
+  appBaseUrl = publicSiteUrl()
 }: {
   order: UgcOrderRecord;
   brief: UgcBriefRecord;
@@ -231,7 +232,7 @@ export function buildCreatorExpiredCopy({
 
 export function buildBrandRelistedCopy({
   brief,
-  appBaseUrl = process.env.APP_URL || "https://ybexmedia.in"
+  appBaseUrl = publicSiteUrl()
 }: {
   brief: UgcBriefRecord;
   appBaseUrl?: string;
@@ -252,7 +253,7 @@ export function buildAdminAlertCopy({
   brand,
   creator,
   now = new Date(),
-  appBaseUrl = process.env.APP_URL || "https://ybexmedia.in"
+  appBaseUrl = publicSiteUrl()
 }: {
   order: UgcOrderRecord;
   brief: UgcBriefRecord;
@@ -1117,7 +1118,7 @@ export function creatorCancelReasonToken(order: any, deliveryHours: any, nowMs: 
 
 export function buildBrandCreatorSteppedAwayCopy({
   brief,
-  appBaseUrl = process.env.APP_URL || "https://ybexmedia.in"
+  appBaseUrl = publicSiteUrl()
 }: { brief: any; appBaseUrl?: string }) {
   const briefTitle = brief?.title || "UGC Video Brief";
   return {
@@ -1469,7 +1470,7 @@ export async function cancelUgcOrderByBrand(
       if (data) creator = data;
     } catch (e) { logIgnored("brandOrderCancel:creatorUser", e); }
   }
-  const appBaseUrl = process.env.APP_URL || "https://ybexmedia.in";
+  const appBaseUrl = publicSiteUrl();
   const title = brief.title || "UGC Video Brief";
   await dispatchNotification({
     userId: order.creator_id,

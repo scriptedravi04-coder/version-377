@@ -629,10 +629,13 @@ export default function CreatorPublicView() {
                           <p className="text-[var(--text-secondary)] uppercase tracking-wider text-[9px] mb-1">Barter Friendly?</p>
                           <p className="text-[var(--text-primary)] font-black">{/* v353: onboarding saves cash_only / partial_barter / barter_friendly — brands saw those raw codes */}{({ barter_ok: "Yes, Open to Barter", barter_friendly: "Yes, Open to Barter", barter_only: "Barter Only", no_barter: "Paid Only (No Barter)", cash_only: "Paid Only (No Barter)", partial_barter: "Cash + Product" })[c.barter] || c.barter || "Not specified"}</p>
                         </div>
+                        {/* v388 (QA): an empty field is hidden instead of showing "Not specified" */}
+                        {(Array.isArray(c.languages) ? c.languages.filter(Boolean).length > 0 : Boolean(c.languages)) && (
                         <div className="p-3 bg-[var(--bg-elevated)] rounded-2xl">
                           <p className="text-[var(--text-secondary)] uppercase tracking-wider text-[9px] mb-1">Languages Spoken</p>
-                          <p className="text-[var(--text-primary)] font-black">{(Array.isArray(c.languages) ? c.languages.filter(Boolean).join(", ") : c.languages) || "Not specified" /* Session 58: the array printed as "EnglishHindi" */}</p>
+                          <p className="text-[var(--text-primary)] font-black">{Array.isArray(c.languages) ? c.languages.filter(Boolean).join(", ") : c.languages /* Session 58: the array printed as "EnglishHindi" */}</p>
                         </div>
+                        )}
                         <div className="p-3 bg-[var(--bg-elevated)] rounded-2xl">
                           <p className="text-[var(--text-secondary)] uppercase tracking-wider text-[9px] mb-1">Gender</p>
                           <p className="text-[var(--text-primary)] font-black capitalize">{c.gender || "Not Specified"}</p>

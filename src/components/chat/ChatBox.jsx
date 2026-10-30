@@ -124,8 +124,7 @@ export default function ChatBox({ thread, user: propUser, onlineUsers = [], onBa
     currentThread?.deal_type === 'UGC' || 
     currentThread?.type === 'ugc' ||
     currentThread?.ugc_title ||
-    currentThread?.campaign_title?.toLowerCase()?.includes('ugc') ||
-    currentThread?.title?.toLowerCase()?.includes('ugc') ||
+    // v389 (QA, Ravi OK 30 Oct): a campaign NAMED "UGC Reels for Diwali" is still a campaign — UGC is decided by the thread's type / id only, never its title.
     currentThread?.id?.startsWith('ugcord_') ||
     currentThread?.deal_id?.startsWith('ugcord_') ||
     currentThread?.id?.startsWith('thread_ugc_')

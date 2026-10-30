@@ -96,6 +96,13 @@ class PageErrorBoundary extends React.Component {
           </button>
         </div>
 
+        {/* v386 (Ravi 30 Oct: Earnings / Inbox / Settings showed this page with no clue why): one short grey line with the
+            error name + message, so a screenshot is enough to find the cause. No stack, no data. */}
+        {!import.meta.env?.DEV && (
+          <p className="text-[10px] text-[var(--text-tertiary)] max-w-sm break-words" data-testid="page-error-code">
+            code: {String(this.state.error?.name || "Error").slice(0, 30)} · {String(message).replace(/\s+/g, " ").slice(0, 140)}
+          </p>
+        )}
         {import.meta.env?.DEV && (
           <pre className="mt-3 max-w-lg overflow-x-auto text-left text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl p-3">
             {message}

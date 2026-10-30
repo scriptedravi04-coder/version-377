@@ -23,7 +23,7 @@ const ROYAL = "#1E3FB8";
 // v377 (Ravi, "Diwali Challenge v2: Easy Entry"): any reel of your own works; ₹50 recharge for the first 300
 const FAQ = [
   ["Does my reel have to be about Ybex?", "No. Any reel of your own works. Just tag @ybex.in and add #Ybex and #YbexDiwaliChallenge in the caption."],
-  ["What is the ₹300 UPI cash?", "The first 300 creators with an approved entry and a complete Ybex profile (photo, niche & bio, Instagram, rate card, past work) get ₹50 by UPI on their WhatsApp number, within 7 days of approval."],
+  ["What is the ₹300 cash?", `The first ${RECHARGE_SLOTS} creators with a complete Ybex profile (photo, niche & bio, Instagram, rate card, past work) get ${RECHARGE_AMOUNT} cash, paid to the payout details you add in KYC. The Ybex finance team sends it within 1–2 days of approval.`], // v388 (QA): was still "₹50 by UPI … within 7 days"
   ["Is it free to join?", "Yes. There is no joining fee. It's free for every Instagram creator in India."],
   ["Do I need a lot of followers?", "No. Winners are picked on the reel — views, likes and how good it is — not on follower count. 50 creators win."],
   ["How do I get paid?", "Cash prizes go straight to your bank account after a quick KYC on Ybex, within 7 working days of the results."],
@@ -112,9 +112,9 @@ export default function ChallengePage() {
   };
   const addReel = () => { setAsk(false); navigate(DIWALI_ADD_PATH); }; // v377: "Add your Diwali reel" (toggle ON, no brand question)
   const later = async () => {
+    setAsk(false); // v387: close the question first — it used to stay open until the request finished
     try { await remindMe(); toast.success(`You're in. We'll remind you before entries close on ${dayText(dates.closesAt)}.`); setMe((m) => (m ? { ...m, remind: true } : m)); }
     catch (e) { toast.error(e.message); }
-    setAsk(false);
   };
   const joinLabel = phase === "soon" ? "Opens soon" : phase !== "open" ? "Entries closed"
     : !user ? "Join Challenge" : !isCreator ? "For creators only"

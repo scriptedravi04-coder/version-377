@@ -115,6 +115,20 @@ export function setupDealsChatRoutes(
 ) {
   const getIsoNow = () => new Date().toISOString();
 
+  // v389 (QA, Ravi OK 30 Oct): counter offers, "counter accepted", "agreement prepared" and "I signed" gave the OTHER party no bell / push — with the app
+  // closed the deal just sat there (rule 92 was written for exactly this). Same pattern as the payment notification below: best effort, never blocks the
+  // request. The other side = creator if the actor is the brand (or brand team), brand if the actor is the creator; staff / third parties send nothing.
+  const notifyOtherParty = async (thread: any, actor: any, type: string, message: string) => {
+    try {
+      if (!thread || !actor) return;
+      const actorIsCreator = actor.user_id === thread.creator_id;
+      const actorIsBrand = actor.user_id === thread.brand_id || (actor.parent_brand_id && actor.parent_brand_id === thread.brand_id);
+      const target = actorIsCreator ? thread.brand_id : actorIsBrand ? thread.creator_id : null;
+      if (!target || target === actor.user_id) return;
+      await sendNotification(null, target, type, message);
+    } catch (e: any) { logIgnored("deals_chat_routes:notifyOtherParty", e); }
+  };
+
   router.post([
     "/campaign/threads/:threadId/approve-request",
     "/chat/v2/threads/:threadId/approve-request"
@@ -240,6 +254,7 @@ We are pleased to partner with you to bring this campaign to life!`;
       });
 
       const updatedThread = await (privilegedSupabase || supabase).from('chat_threads').select('*').eq('id', threadId).maybeSingle();
+      await notifyOtherParty(thread, user, "agreement_ready", "📄 Your agreement is ready. Open the chat to review the terms and sign."); // v389
       return res.json({ success: true, thread: await enrichThread(supabase, updatedThread.data) });
     }
 
@@ -1071,6 +1086,9 @@ We are pleased to partner with you to bring this campaign to life!`;
       agreed_amount: resolvedAmount > 0 ? resolvedAmount : thread.agreed_amount
     };
 
+    // v389: the other party hears about it (the first signature, and the second one that makes the deal active).
+    await notifyOtherParty(thread, user, bothSigned ? "agreement_both_signed" : "agreement_signed",
+      bothSigned ? "✅ Both of you have signed the agreement. The deal is active." : "✍️ The other side signed the agreement. Open the chat to sign too.");
     return res.json({
       success: true,
       signed_by: isCreator ? "creator" : (isBrand ? "brand" : "admin"),
@@ -1164,6 +1182,7 @@ We are pleased to partner with you to bring this campaign to life!`;
       }
       // Session 58 (Q16): the other side sees the counter live (it only showed after a refresh).
       { const io = req.app.get("io"); if (io) emitThreadEvent(io, "thread_updated", { id: threadId, threadId, counter_amount: counterNum, flow_state: "NEGOTIATING_COUNTER", status: "NEGOTIATING" }, threadId); }
+      await notifyOtherParty(thread, user, "counter_offer", `💬 New counter offer: ₹${counterNum.toLocaleString('en-IN')}. Open the chat to reply.`); // v389
       return res.json({ success: true, thread: enriched });
     }
 
@@ -1445,6 +1464,7 @@ We are pleased to partner with you to bring this campaign to life!`;
       }
       // Session 58 (Q16): the other side sees the accept live.
       { const io = req.app.get("io"); if (io) emitThreadEvent(io, "thread_updated", { id: threadId, threadId, agreed_amount: finalAmount, amount_fixed: finalAmount, counter_amount: null, flow_state: "AI_AGREEMENT_READY", status: "NEGOTIATING" }, threadId); }
+      await notifyOtherParty(thread, user, "counter_accepted", "🤝 Your counter offer was accepted. The agreement is ready to sign."); // v389
       return res.json({ success: true, thread: enriched });
     }
 

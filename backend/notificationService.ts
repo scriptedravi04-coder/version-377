@@ -4,6 +4,7 @@
 const escapeHtml = (v: any): string => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as any)[c]); // Session 58
 import { Resend, buildEmailHtml } from "./helpers";
 import { ADMIN_ROOM } from "./socketAccess";
+import { publicSiteUrl } from "./siteUrl"; // v388
 
 /** v373: subject / heading / button for one in-app notice that is also emailed. Pure (tested). */
 export function activityEmailCopy(type: string, message = ""): { subject: string; heading: string; ctaLabel: string; ctaUrl: string; preheader: string; eyebrow: string } {
@@ -164,7 +165,7 @@ export function createNotificationService(deps: {
     try {
       const resendClient = new Resend(apiKey);
       const fromEmail = process.env.RESEND_FROM_EMAIL || "Ybex <noreply@ybexmedia.in>";
-      const appBaseUrl = process.env.APP_URL || 'https://ybexmedia.in';
+      const appBaseUrl = publicSiteUrl(); // v388
 
       // v373 (Ravi: subjects that say the point first, plain English, right page): one table for every notice type.
       // Fixed: a rejected CAMPAIGN fell into "Content revision requested" (button to deals); campaign live, payment held,
@@ -225,7 +226,7 @@ export function createNotificationService(deps: {
     try {
       const resendClient = new Resend(apiKey);
       const fromEmail = process.env.RESEND_FROM_EMAIL || "Ybex <noreply@ybexmedia.in>";
-      const appUrl = process.env.APP_URL || 'https://ybexmedia.in';
+      const appUrl = publicSiteUrl(); // v388
 
       const htmlContent = buildEmailHtml({
       title: escapeHtml(subject),

@@ -12,8 +12,8 @@ ok()   { printf "\033[32m✓\033[0m %s\n" "$1"; }
 warn() { printf "\033[33m!\033[0m %s\n" "$1"; }
 die()  { printf "\033[31m✗ %s\033[0m\n" "$1"; exit 1; }
 
-VERSION_NAME="1.0.4"   # Play: must be higher than the TWA build (1.0.3 / code 4)
-VERSION_CODE=5
+VERSION_NAME="1.0.9"   # v388: Play has 1.0.8 (code 9) — this build must be higher (bump again for every new upload)
+VERSION_CODE=10
 
 echo "== 1. Checking this computer"
 command -v node >/dev/null || die "Node not found. Install Node 20+ (LTS) from https://nodejs.org and run this again."

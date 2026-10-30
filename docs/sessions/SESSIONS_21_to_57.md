@@ -8,6 +8,95 @@ matter live in docs/code/ARCHITECTURE.md and docs/code/PROTECTED_CHANGES.md.
 
 ---
 
+# Session 68 / v389 — 30 Oct 2026 (the SIX locked-file fixes Ravi approved in writing: "Partial refund ke baad double payout, Ek Razorpay payment do baar record hona, Title me ugc …, UGC draft me koi bhi text link maan lena, Counter / sign steps pe notification na jana, Invite email me raw HTML")
+Deploy **v389** only (contains v388). **No database change.** Locked files changed with Ravi's OK — logged via `npm run protect:update` in docs/code/PROTECTED_CHANGES.md:
+1. campaignGuards.ts `isPartRefundedDeposit` + campaign_lifecycle.ts: a deposit row with a PART refund (₹2,000 of ₹20,000, or only the service fee) is still the deposit, so approve
+   no longer inserts a second full payout row; creator net = netAfterPartialRefund. A row with a refund and no paid amount, a full refund, or status REFUNDED is still a refund row.
+2. payment_routes.ts: `persistEscrowPayment` is now a per-order-id queue (verify / status poll / webhook run one after the other) + after the insert the oldest row for the order
+   stays and a later duplicate deletes itself. The DB unique index is still listed in PENDING_DB_CHANGES.md (needed for several server copies).
+3. dealState.js + ChatBox.jsx: the title is never used to decide "UGC order" (type / id only).
+4. ugc_routes.ts `isAcceptableDraftRef`: first draft must be our storage path, /api/media link or a web link with a real host (no spaces, no userinfo); else 400 INVALID_DRAFT_LINK.
+5. deals_chat_routes.ts `notifyOtherParty` (counter, counter accepted, agreement prepared, signed / both signed) + campaign_lifecycle.ts request-changes notification row.
+6. creators_routes.ts invite email: brand-written values HTML-escaped, free text through maskContactDetails, subject single line, link base = publicSiteUrl().
+Not part of the six (still open from the QA report): invite KYC gate + duplicate-invite limit, chat-thread switch race (useChatThreadMobile.js), signingEmail.ts placeholder address, release-payout approval check,
+manual settlement fee, UGC approve dead branch, contactSecurityFilter @brand tag rule. Tests: backend/v389Locked.test.ts.
+
+# Session 67 / v388 — 30 Oct 2026 (Ybex_v382_Deep_QA_Report.pdf — code fixes that do NOT touch locked files or the database)
+Deploy **v388** only. **No database change. No locked file changed.** Tests 2,5xx pass. New dependency: `sanitize-html` (package.json).
+Fixed (QA ids by section):
+- Sign-up/login: WhatsApp paste "+91 98765 43210" kept the wrong digits (`waClean`, AppContinue.jsx); a Supabase error/timeout while reading the
+  session no longer logs everyone out (server.ts → `req._authDbError` → /auth/me 503 SERVER_DOWN); per-IP limit (20 / 5 min) on
+  /auth/login-otp + /auth/forgot-password and trimmed forgot-password key; WhatsApp-only accounts (`phone-…@ybex.io`) get "Add your email first"
+  instead of a code sent to a dead address (account_routes.ts) and a failed OTP mail now says so (OTP_SEND_FAILED).
+- Notifications/email/SEO: push loop no longer stalls after a 200+ burst (cursor = created_at + id, drains up to 5 batches per tick);
+  every email / push link uses `publicSiteUrl()` (backend/siteUrl.ts) — never ybexapp.ai.studio / run.app (creators_routes.ts:1605 is locked, left);
+  profile nudges skip CSV `unclaimed` ghost profiles; robots.txt no longer hides public /creator/<id> and /brand/<id> pages; sitemap has /offer,
+  /explore, /campaigns, /ugc, /terms and drops /apply-creator.
+- Security: blog HTML sanitizer = real parser (`sanitize-html`, backend/htmlSanitize.ts) + the reader page cleans the copy it injects;
+  fee config keeps the last good row when a read fails (brandFee.ts).
+- UI/infra: /offer FAQ ₹50 → ₹300; install banner never in the store apps / Admin, install sheet not on legal/help pages and only after 30 s
+  (or 2 s on the 2nd page); public creator page hides the owner-only footer note and empty "Languages"; missing /assets file = 404 and hashed
+  assets cached 1 year; Cloudflare worker gives /api 60 s (paste the file into Cloudflare again); YBEX_ENV accepts quoted multi-line values and
+  `KEY_B64=` (decoded into KEY); mac-prepare-android.sh → 1.0.9 / code 10; OTA zip skips splash PNGs (−6.6 MB).
+- Test edit (Ravi's requirement changed, Play already has code 9): backend/v364Android.test.ts line 151 "VERSION_CODE=5" → "≥ 5".
+NOT done (need Ravi's written OK — LOCKED files): partial-refund double payout (campaign_lifecycle.ts / campaignGuards.ts), double-recorded Razorpay payment
+(payment_routes.ts), release-payout without approval check, "ugc" in a campaign title (ChatBox.jsx / dealState.js), UGC draft accepts any text (ugc_routes.ts),
+no notifications on counter/sign steps (deals_chat_routes.ts), invite email HTML escape + KYC gate (creators_routes.ts), chat filter @brand tag
+(contactSecurityFilter.ts is not locked but changes chat behaviour — listed), thread-switch race in useChatThreadMobile.js, signing code to placeholder email
+(signingEmail.ts). NOT done (database — see docs/database/PENDING_DB_CHANGES.md, "QA v382"): private buckets, unique indexes, RLS, test-data cleanup, backfills.
+NOT done (bigger / design): Layout remount on every route (App.jsx key), Android Back closing overlays, referral code on quick-join/phone sign-up,
+OAuth state bound to a browser cookie, /internal/cron routes, 1000-row paging in onboarding reminders / CSV import / Instagram refresh.
+
+# Session 66 / v387 — 30 Oct 2026 (merge of Ravi's AI Studio copy "version-382.zip", which is the version running live and working)
+Deploy **v387** only (contains v383–v386). Compared AI Studio's copy with v378: it changed envBundle.ts, oauth_routes.ts, AppOAuthDone.jsx,
+auth_routes.ts, ChallengePage.jsx (+ one test, blogSeo.ts / envBundle.ts `VITEST` guards, .env.example, its own .aistudio folder).
+Merged into this tree: everything above (v385/v386 already had the same Google fix) PLUS what v386 was missing —
+- backend/auth_routes.ts: the old popup Google flow also uses cleanEnvVal for GOOGLE_CLIENT_ID / SECRET.
+- backend/envBundle.ts: applyEnvBundle also cleans a key that was set as its own secret with a `# comment` on the end.
+- src/pages/ChallengePage.jsx: "remind me" closes the question first, then waits for the request.
+- src/pages/app/AppOAuthDone.jsx: reads ?token= / ?error= when the hash is empty; runs once (ref); the token leaves the address bar
+  only after the session is confirmed; explicit Authorization header on the first auth/me calls.
+NOT merged on purpose: the `process.env.VITEST` guards inside blogSeo.ts / envBundle.ts (test-environment workarounds in production code),
+the safeStorage "token_" fallback in readOAuthHash (a stored token would count as a fresh sign-in), the global api.defaults header write,
+the regenerated .env.example, .aistudio/ + public/assets/aistudio/ (AI Studio's own files).
+Tests 2,493 pass, 975 files. Version label v387.
+
+# Session 66 / v386 — 30 Oct 2026 (v383 + v384 + v385 + v386)
+**Google sign-in "didn't finish" — real cause found by Ravi in AI Studio:** the live YBEX_ENV line
+`GOOGLE_CLIENT_SECRET=GOCSPX-… # ── Apple sign-in (iPhone) ──` was loaded WITH the comment → Google 401 invalid_client → error=google.
+- backend/envBundle.ts: `cleanEnvVal()` strips an unquoted trailing ` # comment` (a # inside a value, or inside quotes, stays);
+  parseEnvBundle uses it (also for the one-line-paste case). backend/oauth_routes.ts: GOOGLE_CLIENT_ID / SECRET / APPLE_CLIENT_ID /
+  allowed audiences go through cleanEnvVal; the redirect_uri used at authorize time is signed into the state (`u`) and reused
+  for the token exchange; Google's own reason (invalid_client / redirect_uri_mismatch / invalid_grant) travels as `reason`.
+- src/pages/app/AppOAuthDone.jsx: readOAuthHashOnce (the hash is wiped from the address bar, a second effect run no longer sees
+  an empty hash — the StrictMode double-mount Gemini found); per-error messages + small `code:` line.
+- Test: backend/v385EnvComment.test.ts. **Ravi must also rotate GOOGLE_CLIENT_SECRET (it was pasted in chat) and delete the comment from that line.**
+**v386:** desktop Eva floats OVER the page (no more 552px right padding squeezing the dashboard) — FeedbackBot.jsx, test src/v386EvaOverlap.test.js.
+PageErrorBoundary ("This page didn't load", seen on /earnings, /chat, Settings) now shows a small `code: <name> · <message>` line so
+the cause can be read from a screenshot. Cause of that crash NOT found yet (needs the code line).
+
+# Session 66 / v384 — 30 Oct 2026 (v383 + OAuth error codes)
+- **"Sign-in didn't finish. Please try again or use your email." (Ravi, desktop, 30 Oct)** — the page hid which step failed.
+  src/pages/app/AppOAuthDone.jsx now has a message per backend code (google / apple / state / session / lookup / create) and
+  shows a small `code: …` line under it. Most likely cause on the live site: the Google `redirect_uri_mismatch` fix from v378
+  is not deployed yet (live is still older) → deploy v384 first, then read the code if it still happens.
+
+# Session 66 / v383 — 30 Oct 2026 (Ravi: zip renamed to ybex-v382, so numbering continues from there)
+Deploy **v383** (contains v378). **No database change. No locked file changed.** Tests 2,484 pass (new backend/v383DemoLinkLive.test.ts).
+
+**"Demo access (test server)" link still on the live login / app screen (Ravi, 30 Oct)**
+- Cause: the live YBEX_ENV still carries DEMO_LOGIN=true, and the v376 live guard (isLiveServer) only fires on a live
+  Razorpay key or APP_URL = ybexmedia.in — the live secrets have neither, so /api/auth/demo-enabled answered true.
+- Fix 1 (backend/liveServer.ts): Cloud Run always sets K_SERVICE → treated as live → demo / bypass logins off whatever the secrets say.
+- Fix 2 (src/lib/useDemoLogin.js isPublicClient): on ybexmedia.in / ybexapp.ai.studio or inside the Capacitor app the link is never asked for.
+- Ravi still to remove DEMO_LOGIN=true from YBEX_ENV (defence in depth).
+
+**Marketing (outside the repo)** — Diwali creator ad, Sleeko/HowDo-style motion: `Ybex_Diwali_Ad_9x16.mp4` + `_4x5.mp4`
+(24.5 s, 1080×1920 / 1080×1350, Kokoro af_heart "Why-bex" voice, synth beat + SFX, real app screens in phone mockups).
+Source: ad.html (Playwright frame capture → ffmpeg), music.py, tts.py.
+
+---
+
 # Session 65 / v378 — full chat (26–30 Oct 2026)
 Deploy **v378** only (contains everything up to v377). **No database change. No locked file changed.** Tests 2,481 pass, repo 975 files.
 Handoff for the next chat: `CHAT_HANDOFF_v378.md` (outside the repo).

@@ -26,6 +26,22 @@ import { parseRefundAccount, toPublicRefundAccount, toAdminRefundSnapshot } from
 import { runUgcDeadlineChecks, cancelUgcOrderByCreator, cancelUgcOrderByBrand } from "./services/ugcDeadlineService";
 import { UGC_NO_RECLAIM_REASONS } from "./statusTokens";
 
+/** v389: a first-draft value that is really a video: our storage path / media link, or a web link with a real host. Pure. */
+export function isAcceptableDraftRef(raw: string): boolean {
+  const v = String(raw || "").trim();
+  if (!v || /\s/.test(v)) return false;
+  if (v.startsWith("/api/media?") || v.startsWith("api/media?")) return true;
+  if (/^(https?:\/\/)?(ugc-videos|campaign-deliverables|campaign-videos|campaign-submissions|chat-attachments|chat-submissions|content-submissions|live-proofs|ugc-assets)\//i.test(v)) return true; // storage paths / old pseudo links
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    if (parsed.username || parsed.password) return false; // "mailto:a@b.co" is not a web link
+    const parts = parsed.hostname.split(".");
+    return parts.length >= 2 && (parts[parts.length - 1] || "").length >= 2;
+  } catch { return false; }
+}
+
+
 // Supabase and the local JSON db can both hold the same UGC order. The old merge always
 // preferred the Supabase copy and only fell back to the local one when Supabase had no row
 // at all — so whenever a lifecycle write landed locally but not in Supabase, the stale
@@ -164,7 +180,6 @@ export function createUgcLifecycleHandlers({
     if (!finalVideoUrl) {
       return res.status(400).json({ error: "A video file or link is required" });
     }
-
     const db = getDb();
     let thread = (db.chat_threads || []).find((t: any) => t.id === rawId || t.deal_id === rawId);
     if (!thread && supabase) {
@@ -219,6 +234,13 @@ export function createUgcLifecycleHandlers({
     }
     if (ugcOrder && [...UGC_LIVE_LINK_DUE, ...UGC_LINK_WITH_BRAND].includes(orderStatus(ugcOrder))) {
       return ugcConflict(res, 'DRAFT_ALREADY_APPROVED', "Your draft is already approved — submit the live post link instead.");
+    }
+
+    // v389 (QA, Ravi OK 30 Oct): "will send tomorrow" used to be accepted as the first draft — the order became SUBMITTED, the 24 h expiry and
+    // the brand's cancel / missed-deadline rules all stopped. The draft must be an uploaded file (our storage path or /api/media link) or a real
+    // web link (same rule as the live-link handler below). Anything else is refused and the order stays as it was (checked after the order-state rules, so a closed / expired order still answers 409 first).
+    if (!isAcceptableDraftRef(finalVideoUrl)) {
+      return res.status(400).json({ error: "Please upload your video or paste a valid link (https://…). Text like a message is not a video.", code: "INVALID_DRAFT_LINK" });
     }
 
     const result = await syncUgcLifecycleEvent({

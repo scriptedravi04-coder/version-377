@@ -12,6 +12,7 @@ import Razorpay from "razorpay";
  * falling back to the configured env var, then a hardcoded default.
  */
 import { Resend as OriginalResend } from "resend";
+import { publicSiteUrl } from "./siteUrl"; // v388
 
 /**
  * Sanitizes and cleans Resend API keys, removing accidental concatenation
@@ -112,7 +113,7 @@ export function buildLegacyEmailHtml({ title, greeting, paragraphs, button, sign
 //   preheader — the grey line next to the subject in the inbox · eyebrow — small label top right of the band
 //   icon — one emoji in a tile above the heading · reason — "You're getting this because …" · blocks — raw HTML after the text
 const EMAIL_FONT = "'DM Sans','Helvetica Neue',Helvetica,Arial,sans-serif";
-export function emailSiteUrl() { return String(process.env.APP_URL || "https://ybexmedia.in").replace(/\/+$/, ""); }
+export function emailSiteUrl() { return publicSiteUrl(); } // v388: never the AI Studio / Cloud Run address
 export function emailButtonHtml(text: string, link: string) {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:26px auto 8px"><tr><td align="center" style="border-radius:16px;background:#1A1033">` +
     `<a href="${link}" style="display:inline-block;padding:16px 34px;font:800 15px ${EMAIL_FONT};color:#FFFFFF;text-decoration:none;border-radius:16px;letter-spacing:.2px">${text}</a></td></tr></table>`; // text right before </a> (a test reads it)

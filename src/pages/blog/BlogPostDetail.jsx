@@ -73,7 +73,7 @@ export default function BlogPostDetail() {
     if (!post?.content) return "";
     try {
       const parser = new DOMParser();
-      const doc = parser.parseFromString(post.content, "text/html");
+      const doc = parser.parseFromString(sanitizeHtml(post.content), "text/html"); // v388 (QA): this copy is what gets injected — it was NOT cleaned (only the table of contents copy was)
       const headings = doc.querySelectorAll("h2, h3");
       headings.forEach((h, idx) => {
         const text = h.textContent || "";

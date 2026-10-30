@@ -58,8 +58,13 @@ export function setupAccountRoutes(
     return ok;
   };
 
-  const sendOtpEmail = async (to: string, code: string, subject: string, line: string) => {
-    if (!process.env.RESEND_API_KEY) { console.warn("[account] RESEND_API_KEY not set — OTP only in logs"); return; }
+  // v388 (QA: WhatsApp-only accounts have a made-up address `phone-91XXXXXXXXXX@ybex.io`; password / delete codes were "sent" to it and the
+  // person was stuck for ever): such an account must add a real email first (Settings → Email, which does not need a code to the old one).
+  const PLACEHOLDER_EMAIL = /^phone-\d{6,15}@ybex\.io$/i;
+  const NEEDS_EMAIL = { detail: "Add your email first (Settings → Email) — we send this code by email.", code: "ADD_EMAIL_FIRST" };
+  // Returns false when the mail could not be sent (v388: the screen used to say "code sent" anyway).
+  const sendOtpEmail = async (to: string, code: string, subject: string, line: string): Promise<boolean> => {
+    if (!process.env.RESEND_API_KEY) { console.warn("[account] RESEND_API_KEY not set — OTP only in logs"); return true; }
     try {
       const resendClient = new Resend(process.env.RESEND_API_KEY);
       await resendClient.emails.send({
@@ -75,10 +80,13 @@ export function setupAccountRoutes(
           ],
         }),
       });
+      return true;
     } catch (e: any) {
       console.error("[account] OTP email failed:", e?.message || e);
+      return false;
     }
   };
+  const OTP_SEND_FAILED = { detail: "We couldn't send the code right now. Please try again in a minute.", code: "OTP_SEND_FAILED" };
 
   // Session 58: sign out the user's other devices (the token of this request stays valid).
   const endOtherSessions = async (req: express.Request, uid: string) => {
@@ -153,7 +161,7 @@ export function setupAccountRoutes(
     } catch (e) { console.warn("[account] email-taken check notice", e); }
     const issued = await issueLoginOtp(email);
     if (!issued.ok) return res.status(429).json({ detail: "Too many codes asked. Please wait 15 minutes." });
-    await sendOtpEmail(email, issued.code, `${issued.code} is your Ybex email-change code`, "Use this code to confirm your new Ybex email:");
+    if (!(await sendOtpEmail(email, issued.code, `${issued.code} is your Ybex email-change code`, "Use this code to confirm your new Ybex email:"))) return res.status(502).json(OTP_SEND_FAILED);
     res.json({ success: true });
   });
 
@@ -186,10 +194,11 @@ export function setupAccountRoutes(
   router.post("/account/password/send-otp", async (req, res) => {
     const user = await me(req, res); if (!user) return;
     const email = String(user.email || "").trim().toLowerCase();
+    if (PLACEHOLDER_EMAIL.test(email)) return res.status(400).json(NEEDS_EMAIL);
     if (!EMAIL_OK(email)) return res.status(400).json({ detail: "Your account has no email to send a code to. Please contact support." });
     const issued = await issueLoginOtp(email);
     if (!issued.ok) return res.status(429).json({ detail: "Too many codes asked. Please wait 15 minutes." });
-    await sendOtpEmail(email, issued.code, `${issued.code} is your Ybex password code`, "Use this code to set a new password for your Ybex account:");
+    if (!(await sendOtpEmail(email, issued.code, `${issued.code} is your Ybex password code`, "Use this code to set a new password for your Ybex account:"))) return res.status(502).json(OTP_SEND_FAILED);
     res.json({ success: true });
   });
 
@@ -213,10 +222,11 @@ export function setupAccountRoutes(
   router.post("/account/delete/send-otp", async (req, res) => {
     const user = await me(req, res); if (!user) return;
     const email = String(user.email || "").trim().toLowerCase();
+    if (PLACEHOLDER_EMAIL.test(email)) return res.status(400).json(NEEDS_EMAIL);
     if (!EMAIL_OK(email)) return res.status(400).json({ detail: "Your account has no email to send a code to. Please contact support." });
     const issued = await issueLoginOtp(email);
     if (!issued.ok) return res.status(429).json({ detail: "Too many codes asked. Please wait 15 minutes." });
-    await sendOtpEmail(email, issued.code, `${issued.code} is your Ybex account-deletion code`, "Use this code to confirm deleting your Ybex account:");
+    if (!(await sendOtpEmail(email, issued.code, `${issued.code} is your Ybex account-deletion code`, "Use this code to confirm deleting your Ybex account:"))) return res.status(502).json(OTP_SEND_FAILED);
     res.json({ success: true });
   });
 

@@ -19,7 +19,9 @@ export default function PWAInstallPrompt({ className = "" }) {
     }
   });
 
-  if (isInstalled || dismissed) {
+  // v388 (QA): never inside the store apps (Android / iPhone native), and never on the Admin panel.
+  const onAdmin = typeof window !== "undefined" && /^\/admin/i.test(window.location.pathname || "");
+  if (isInstalled || dismissed || onAdmin || (typeof window !== "undefined" && isNative())) {
     return null;
   }
 
@@ -92,7 +94,9 @@ export default function PWAInstallPrompt({ className = "" }) {
 // When the store apps are live, point INSTALL_STORE_URL at the store link and the same popup / bar open the store.
 export const INSTALL_STORE_URL = { android: "", ios: "" }; // fill when the apps are on Play Store / App Store
 const POPUP_KEY = "ybex_install_popup_closed_at";
-const POPUP_PAGES = /^\/($|offer|challenge|creators|explore|campaigns|blog|ugc-orders|creator\/|info\/|help)/;
+// v388 (QA: the sheet covered the bottom of every legal / help page on the first visit): not on info / legal / help pages; shown after 30 s on the
+// first page of a visit, or after 2 s once the visitor opened a 2nd page.
+const POPUP_PAGES = /^\/($|offer|challenge|creators|explore|campaigns|blog|ugc-orders|creator\/)/;
 const popupClosedRecently = () => { try { const t = Number(localStorage.getItem(POPUP_KEY) || 0); return t > 0 && Date.now() - t < 3 * 24 * 3600 * 1000; } catch { return false; } };
 const isPhone = () => typeof window !== "undefined" && (window.innerWidth || 1024) < 768;
 
@@ -129,7 +133,9 @@ export function InstallPopup() {
   }, [path]);
   React.useEffect(() => {
     if (!can || !isPhone() || popupClosedRecently() || !POPUP_PAGES.test(path)) return undefined;
-    const t = setTimeout(() => { if (!window.__ybFullScreenAsk) setOpen(true); }, 2000);
+    let views = 1;
+    try { views = Number(sessionStorage.getItem("yb_inst_views") || 0) + 1; sessionStorage.setItem("yb_inst_views", String(views)); } catch { /* private mode */ }
+    const t = setTimeout(() => { if (!window.__ybFullScreenAsk) setOpen(true); }, views >= 2 ? 2000 : 30000);
     return () => clearTimeout(t);
   }, [can, path]);
   if (!open || !can) return null;

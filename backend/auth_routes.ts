@@ -14,9 +14,11 @@ import { resolveOtpEcho } from "./otpEcho";
 import { issueMediaKey } from "./mediaAccess";
 import { issueLoginOtp, checkLoginOtp, LOGIN_OTP_MESSAGES, emailCheckAllowed } from "./loginOtp";
 import { oauthSignInCore } from "./oauth_routes";
+import { cleanEnvVal } from "./envBundle"; // v387
+import { publicSiteUrl } from "./siteUrl"; // v388: Google keys with a trailing "# comment"
 import { indianMobile, smsProvider, sendSmsOtp, otpChannel } from "./smsOtp"; // v376: mobile + SMS code sign-up
 import { signEmailLink, verifyEmailLink } from "./emailLinks"; // v376: signed "email verified" proof for the creator join
-import { newSessionToken, escapeLike, pickLoginUser, isBcryptHash, loginLockedFor, recordLoginFailure, clearLoginFailures, sessionCookieOptions, loginIpAllowed, withHashSlot } from "./authSecurity";
+import { newSessionToken, escapeLike, pickLoginUser, isBcryptHash, loginLockedFor, recordLoginFailure, clearLoginFailures, sessionCookieOptions, loginIpAllowed, otpIpAllowed, withHashSlot } from "./authSecurity";
 
 const DEMO_SEED_ENABLED = () => String(process.env.DEMO_SEED || "").trim().toLowerCase() === "true";
 
@@ -1071,10 +1073,7 @@ export function setupAuthRoutes(
     if (quickByIp.size > 5000) quickByIp.delete(quickByIp.keys().next().value as string);
     return true;
   };
-  const publicSite = () => {
-    const site = String(process.env.SITE_URL || process.env.APP_URL || "").trim().replace(/\/+$/, "");
-    return !site || /\.ai\.studio|\.run\.app/i.test(site) ? "https://ybexmedia.in" : site;
-  };
+  const publicSite = () => publicSiteUrl(); // v388: one shared helper (backend/siteUrl.ts)
   /** Makes (or fills) the creator's profile row with the Instagram username — the app then fetches the numbers. */
   const ensureCreatorRow = async (u: any, ig: string) => {
     const client = privilegedSupabase || supabase;
@@ -1310,6 +1309,7 @@ export function setupAuthRoutes(
   router.post("/auth/login-otp", async (req, res) => {
     const email = String(req.body?.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ detail: "Email is required" });
+    if (!otpIpAllowed(clientIp(req))) return res.status(429).json({ detail: "Too many codes asked. Please wait a few minutes and try again.", code: "TOO_MANY_CODES" }); // v388
     try {
       if (supabase && !privilegedSupabase) return res.status(503).json(LOGIN_NO_SERVICE_KEY);
       const found = await findUserByEmail(privilegedSupabase || supabase, email);
@@ -1676,7 +1676,7 @@ export function setupAuthRoutes(
   });
 
   router.get("/auth/google/url", async (req, res) => {
-    const client_id = process.env.GOOGLE_CLIENT_ID;
+    const client_id = cleanEnvVal(process.env.GOOGLE_CLIENT_ID);
     if (!client_id) {
       return res.status(400).json({
         error: "Google OAuth Client ID is not configured on the server. Please configure GOOGLE_CLIENT_ID in the settings panel."
@@ -1725,8 +1725,8 @@ export function setupAuthRoutes(
       `);
     }
 
-    const client_id = process.env.GOOGLE_CLIENT_ID;
-    const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+    const client_id = cleanEnvVal(process.env.GOOGLE_CLIENT_ID);
+    const client_secret = cleanEnvVal(process.env.GOOGLE_CLIENT_SECRET);
 
     if (!client_id || !client_secret) {
       return res.status(400).send("Google OAuth Client ID & Secret are not configured on the server.");
@@ -1842,7 +1842,8 @@ export function setupAuthRoutes(
       // v378 (live 28 Oct: "update diya toh sabke phone se logout ho gaya"): without the service key the server cannot
       // read saved logins, so every phone was told "not logged in" and signed out. That is a server problem, not a
       // logged-out user — answer SERVER_DOWN so the app keeps the login and just waits.
-      if (!privilegedSupabase && /^Bearer\s+\S+/i.test(String(req.headers.authorization || ""))) {
+      // v388: same answer when Supabase itself failed / timed out while reading the session (QA: one hiccup logged everyone out).
+      if ((!privilegedSupabase || (req as any)._authDbError) && /^Bearer\s+\S+/i.test(String(req.headers.authorization || ""))) {
         return res.status(503).json({ detail: "Ybex is updating right now — try again in a few minutes", code: "SERVER_DOWN" });
       }
       return res.status(403).json({ detail: "Not authenticated", _status: 403 });
@@ -2164,10 +2165,11 @@ export function setupAuthRoutes(
   });
 
   router.post("/auth/forgot-password", async (req, res) => {
-    const { email } = req.body;
+    const email = String(req.body?.email || "").trim().toLowerCase(); // v388: trimmed — " user@x.com" used to get its own limit bucket
     if (!email) {
       return res.status(400).json({ detail: "Email is required" });
     }
+    if (!otpIpAllowed(clientIp(req))) return res.status(429).json({ detail: "Too many requests. Please try again in a few minutes." }); // v388
     
     if (!checkForgotPasswordRateLimit(email)) {
       return res.status(429).json({ detail: "Too many requests. Please try again in 15 minutes." });

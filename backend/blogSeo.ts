@@ -188,8 +188,13 @@ export function robotsTxt(base: string): string {
     "Allow: /",
     "Disallow: /api/",
     "Disallow: /admin",
-    "Disallow: /creator/",
-    "Disallow: /brand/",
+    // v388 (QA: the old "Disallow: /creator/" + "/brand/" also hid the PUBLIC profile pages /creator/<id> and /brand/<id> from Google):
+    // only the private app screens are blocked now.
+    "Disallow: /creator/dashboard", "Disallow: /creator/refer", "Disallow: /creator/profile", "Disallow: /creator/settings",
+    "Disallow: /creator/inbox", "Disallow: /creator/notifications", "Disallow: /creator/kyc", "Disallow: /creator/ugc", "Disallow: /creator/deals",
+    "Disallow: /brand/ugc", "Disallow: /brand/profile", "Disallow: /brand/settings", "Disallow: /brand/account", "Disallow: /brand/dashboard",
+    "Disallow: /brand/discover", "Disallow: /brand/campaigns", "Disallow: /brand/inbox", "Disallow: /brand/notifications",
+    "Disallow: /brand/payments", "Disallow: /brand/kyc",
     "Disallow: /chat",
     "",
     `Sitemap: ${base}/sitemap.xml`,
@@ -199,8 +204,9 @@ export function robotsTxt(base: string): string {
 
 // Public pages that need no login (apart from the blog, which is added from the database).
 const STATIC_PAGES: Array<[string, string, string]> = [
-  ["/", "weekly", "1.0"], ["/blog", "daily", "0.9"], ["/apply-creator", "monthly", "0.7"], ["/challenge", "daily", "0.8"], // v367
-  ["/help", "monthly", "0.5"], ["/privacy-policy", "yearly", "0.3"],
+  ["/", "weekly", "1.0"], ["/blog", "daily", "0.9"], ["/offer", "daily", "0.9"], ["/challenge", "daily", "0.8"], // v367 · v388: /offer added, old /apply-creator form dropped
+  ["/explore", "daily", "0.8"], ["/campaigns", "daily", "0.7"], ["/ugc", "weekly", "0.6"],
+  ["/help", "monthly", "0.5"], ["/terms", "yearly", "0.3"], ["/privacy-policy", "yearly", "0.3"],
 ];
 
 export function sitemapXml(base: string, posts: Array<{ slug: string; updated_at?: string; published_at?: string }>): string {

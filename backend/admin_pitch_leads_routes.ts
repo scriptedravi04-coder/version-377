@@ -4,6 +4,7 @@ import { emitThreadEvent } from "./socketAccess";
 import express from "express";
 import crypto from "crypto";
 import { Resend, buildEmailHtml, getValidFromEmail } from "./helpers";
+import { publicSiteUrl } from "./siteUrl"; // v388
 
 export function setupAdminPitchLeadsRoutes(
   app: express.Application,
@@ -379,7 +380,7 @@ export function setupAdminPitchLeadsRoutes(
 
     try {
       const resendClient = new Resend(apiKey);
-      const appUrl = process.env.APP_URL || "https://ybexmedia.in"; // v373: ybex.club is not our domain
+      const appUrl = publicSiteUrl(); // v373: ybex.club is not our domain · v388: never the AI Studio address
 
       // v373: the button used `url` (the builder reads `link`) so it opened "undefined"; the unclaimed link went to the
       // old /auth/register. Plain English, the offer first, typed text escaped.

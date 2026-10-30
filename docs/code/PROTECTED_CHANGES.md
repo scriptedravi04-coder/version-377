@@ -219,3 +219,11 @@ Only Ravi can approve a change. After he approves, run:
 - 2026-10-27T08:46:21.850Z — v378 QA fixes (Ravi 27 Oct: report ke saare points + locked 4, 9, 10, 13, 14, 16, 27, 30 approve — 'hn toh shuru ho jao'): ugc_routes M1 brief private fields; campaigns_routes M6 owner-only columns, M7 view dedup, L11 not-found before already-applied, L3 no DB text; creators_routes M13 shared explore read; chat_routes L14 length + rate limit
   - logic files changed: backend/campaigns_routes.ts, backend/chat_routes.ts, backend/ugc_routes.ts, backend/creators_routes.ts
   - screen call groups changed: none
+
+- 2026-10-30T10:46:18.713Z — v389 QA fixes — Ravi's written OK 30 Oct 2026 for exactly these six: (1) part refund no longer makes a second payout row (campaignGuards isPartRefundedDeposit + campaign_lifecycle net minus part refund), (2) one Razorpay payment recorded once (payment_routes per-order lock + duplicate row removal), (3) 'ugc' in a campaign title no longer makes it a UGC order (dealState.js, ChatBox.jsx), (4) UGC first draft must be a file or a real link (ugc_routes isAcceptableDraftRef), (5) notifications on counter / accept / agreement prepared / sign / request-changes (deals_chat_routes, campaign_lifecycle), (6) invite email escapes brand text and masks contact details (creators_routes)
+  - logic files changed: backend/campaign_lifecycle.ts, backend/campaignGuards.ts, backend/deals_chat_routes.ts, backend/payment_routes.ts, backend/ugc_routes.ts, backend/creators_routes.ts, src/components/chat/dealState.js
+  - screen call groups changed: none
+
+- 2026-10-30T10:53:46.609Z — v389 follow-up (same Ravi OK, 30 Oct 2026, item 4): the UGC first-draft link check now runs AFTER the order-state checks, so a closed / expired order still answers 409 first (ugc_routes.ts only)
+  - logic files changed: backend/ugc_routes.ts
+  - screen call groups changed: none

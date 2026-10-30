@@ -71,7 +71,20 @@ export function loginIpAllowed(ip: string, now = Date.now()): boolean {
   if (ipHits.size > 20000) for (const [k, v] of ipHits) if (!v.length || now - v[v.length - 1] > 60_000) ipHits.delete(k);
   return true;
 }
-export function _resetLoginIpHits(): void { ipHits.clear(); }
+export function _resetLoginIpHits(): void { ipHits.clear(); otpHits.clear(); }
+
+// v388 (QA: /auth/login-otp and /auth/forgot-password had no per-IP limit — a script could mail a code to every registered
+// address and burn the daily Resend quota): 20 code requests per 5 minutes per IP, separate from the password-login budget.
+const otpHits = new Map<string, number[]>();
+export const OTP_IP_PER_WINDOW = 20;
+export const OTP_IP_WINDOW_MS = 5 * 60_000;
+export function otpIpAllowed(ip: string, now = Date.now()): boolean {
+  const arr = (otpHits.get(ip) || []).filter((t) => now - t < OTP_IP_WINDOW_MS);
+  if (arr.length >= OTP_IP_PER_WINDOW) { otpHits.set(ip, arr); return false; }
+  arr.push(now); otpHits.set(ip, arr);
+  if (otpHits.size > 20000) for (const [k, v] of otpHits) if (!v.length || now - v[v.length - 1] > OTP_IP_WINDOW_MS) otpHits.delete(k);
+  return true;
+}
 let hashSlotsBusy = 0;
 const hashQueue: Array<() => void> = [];
 export const HASH_SLOTS = 4;

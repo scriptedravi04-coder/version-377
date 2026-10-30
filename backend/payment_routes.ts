@@ -1409,7 +1409,29 @@ export function setupPaymentRoutes(
     });
   });
 
-  async function persistEscrowPayment({
+  // v389 (QA, Ravi OK 30 Oct): "ek hi Razorpay payment do baar record ho sakta hai" — verify, the status poll and the webhook all arrive within a
+  // second, each read "not recorded yet" and each inserted a row (two SUCCESS rows, two "Payment Secured" cards). Calls for the SAME order id now
+  // run one after the other inside this server copy (the second one finds the first row and stops), and a final check after the insert removes
+  // this call's own row when another server copy got there first. (A database unique index on the order id is listed in PENDING_DB_CHANGES.md.)
+  const escrowLocks = new Map<string, Promise<unknown>>();
+  async function persistEscrowPayment(args: Parameters<typeof persistEscrowPaymentInner>[0]): Promise<Awaited<ReturnType<typeof persistEscrowPaymentInner>>> {
+    const key = String(args.razorpay_order_id || "");
+    if (!key) return persistEscrowPaymentInner(args);
+    const prev = escrowLocks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const mine = prev.then(() => gate);
+    escrowLocks.set(key, mine);
+    try {
+      await prev.catch(() => {});
+      return await persistEscrowPaymentInner(args);
+    } finally {
+      release();
+      if (escrowLocks.get(key) === mine) escrowLocks.delete(key);
+    }
+  }
+
+  async function persistEscrowPaymentInner({
     razorpay_order_id,
     razorpay_payment_id,
     deal_id,
@@ -1677,6 +1699,19 @@ console.log('Valid Source:', { validDealId, validUgcOrderId, hasValidSource, dea
           // stop here (no second "Payment Secured" message, no false "issue updating your deal").
           if (insErr && String((insErr as any).code) === '23505') {
             return { safeGross, dealUpdateError: null, threadUpdateError: null, alreadyProcessed: true };
+          }
+          // v389: two server copies can still insert at the same moment (the lock above is per copy). The OLDEST row for this order stays;
+          // a later one removes itself and reports "already processed".
+          if (!insErr && razorpay_order_id) {
+            try {
+              const { data: sameOrder } = await (privilegedSupabase || supabase).from('transactions').select('id, created_at')
+                .eq('zaakpay_order_id', razorpay_order_id).order('created_at', { ascending: true }).order('id', { ascending: true }).limit(5);
+              if (Array.isArray(sameOrder) && sameOrder.length > 1 && sameOrder[0].id !== txnId) {
+                await (privilegedSupabase || supabase).from('transactions').delete().eq('id', txnId);
+                console.warn("[persistEscrowPayment] duplicate row for the same order removed:", { razorpay_order_id, txnId, kept: sameOrder[0].id });
+                return { safeGross, dealUpdateError: null, threadUpdateError: null, alreadyProcessed: true };
+              }
+            } catch (e) { console.warn("[persistEscrowPayment] duplicate check notice:", e); }
           }
           if (!insErr && feeCalc?.appliedCoupon && targetCreatorId) {
             await recordCouponUse(privilegedSupabase || supabase, feeCalc.appliedCoupon, { creatorId: targetCreatorId, dealId: validDealId || null, ugcOrderId: validUgcOrderId || null, discount: Number(feeCalc.discountApplied || 0) });

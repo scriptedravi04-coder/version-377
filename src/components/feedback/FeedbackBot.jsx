@@ -354,15 +354,8 @@ export default function FeedbackBot({ role = "creator", screen = "dashboard", de
     }
   }, [chat]);
 
-  // v329: desktop ≥1100px — the docked panel used to cover the right 536px of the page; the page now gets that room.
-  useEffect(() => {
-    if (!chat || !docked || typeof document === "undefined") return undefined;
-    const el = document.getElementById("app-scroll-container");
-    if (!el) return undefined;
-    const prev = el.style.paddingRight;
-    el.style.paddingRight = "552px"; // 520 panel + 16 gap + 16 air
-    return () => { el.style.paddingRight = prev; };
-  }, [chat, docked]);
+  // v386 (Ravi 30 Oct: "Eva ko overlap karo, aage ke page ko shrink mat karo"): the docked panel floats OVER the page.
+  // v329 used to make room for the panel by squeezing the page (right padding), which squeezed the dashboard cards every time Eva opened.
   // v329: desktop — focus goes to the input when Eva opens (never on phones: it would pop the keyboard) and back
   // to where it was when she closes.
   const inputRef = useRef(null);

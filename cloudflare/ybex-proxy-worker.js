@@ -18,6 +18,9 @@
 const TARGET_HOST = "ybexapp.ai.studio";
 const MAIN_HOST = "ybexmedia.in";
 const ORIGIN_TIMEOUT_MS = 20000;
+// v388 (QA: Eva AI is allowed 21 s on the server but the worker cut every request at 20 s → "Ybex is updating" page): API calls get 60 s,
+// page loads keep 20 s (a page that does not answer in 20 s really is down).
+const API_TIMEOUT_MS = 60000;
 
 function isPageRequest(request, url) {
   if (request.method !== "GET") return false;
@@ -79,7 +82,7 @@ export default {
     let res;
     try {
       const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), ORIGIN_TIMEOUT_MS);
+      const timer = setTimeout(() => ctl.abort(), original.pathname.startsWith("/api/") ? API_TIMEOUT_MS : ORIGIN_TIMEOUT_MS);
       res = await fetch(url.toString(), {
         method: request.method,
         headers,

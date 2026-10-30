@@ -185,7 +185,22 @@ export async function hasCampaignDraftEvidence(opts: { client: any; db: any; thr
  */
 export function isEscrowDepositRow(tx: any): boolean {
   if (!tx) return false;
-  if (hasRefund(tx)) return false; // Session 58: refund_status 'NONE' is the DB default, not a refund
+  // Session 58: refund_status 'NONE' is the DB default, not a refund.
+  // v389 (QA, Ravi OK 30 Oct): a deposit row that only had a PART of the deal refunded (₹2,000 of ₹20,000, or just the service fee) is STILL
+  // the deposit. It used to count as "a refund row", so on approval no deposit row was found and a SECOND full payout row was inserted
+  // (creator paid ₹20,000 although the brand got ₹2,000 back).
+  if (hasRefund(tx)) return isPartRefundedDeposit(tx);
+  return ["SUCCESS", "COMPLETED", "HELD"].includes(upper(tx.status)) || tx.escrow_hold === true;
+}
+
+/** v389: a funded deposit row with a refund on it that is SMALLER than what the brand paid. Needs the paid amount on the row — a row with a
+ *  refund and no paid amount is still read as a refund row (old rule). Pure. */
+export function isPartRefundedDeposit(tx: any): boolean {
+  if (!tx || !hasRefund(tx)) return false;
+  const paid = Number(tx.brand_paid_amount) || Number(tx.gross_amount) || 0;
+  const refunded = Number(tx.refund_amount) || 0;
+  if (!(paid > 0) || !(refunded > 0) || refunded >= paid - 0.5) return false;
+  if (upper(tx.status) === "REFUNDED") return false;
   return ["SUCCESS", "COMPLETED", "HELD"].includes(upper(tx.status)) || tx.escrow_hold === true;
 }
 

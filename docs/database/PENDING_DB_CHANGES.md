@@ -1560,3 +1560,23 @@ List:
 - Copy used is exactly the approved §10 text (1–2 working days is Ravi's own commitment — manual transfer).
 - Status tokens added in `statusTokens.ts` + SQL constraint.
 - WhatsApp fails safe (email still sends). Opt-in is respected.
+
+---
+
+## QA v382 (30 Oct 2026) — database / Supabase-dashboard items (NOT done: need Ravi's OK in the database session)
+
+Source: Ybex_v382_Deep_QA_Report.pdf. Nothing below was changed by code; each is a dashboard / SQL action.
+
+1. **CRITICAL — private buckets are public.** Supabase → Storage → `content-submissions`, `live-proofs`, `ugc-assets` → set **Private**; delete policy
+   "App read private buckets" (anon SELECT); set allowed MIME types + size limits. The server signs all links (`backend/mediaAccess.ts`), so nothing breaks.
+2. **Unique indexes (money).** `transactions`: unique on the Razorpay order id and on (deal_id, type) for SUCCESS rows — written for the real
+   `refund_amount` default (0, not null; the old partial index in `scripts/sql/session56.sql` never matched). Stops the double-recorded payment race.
+3. **RLS `public_select_campaigns` (anon, qual=true):** limit to `status='live'`; then move `BrandPublicProfileModal.jsx:62` to the server API.
+4. **Storage policy "Insert avatars and brand-logos" (anon INSERT):** remove after the 3 upload screens go through `/api/upload`; add size/MIME limits.
+5. **Test data:** delete users `dev-user-id-12345`, `dev-admin-id-12345`, `dev-brand-id-12345`, `00000000-0000-0000-0000-000000000000`; confirm / remove
+   admin `commonuseforpro@gmail`; bulk-resolve the ~70 test Help Desk tickets; answer the 4 real OPEN brand call requests (Palmons ×2, carboex, Nexus Brands).
+6. **Backfill:** 3 creators (1 real: Deeksha, 26 Oct) + 3 brands have no profile row (`creator_profiles` / `brand_profiles`).
+7. **Performance advisor:** 56 unindexed foreign keys, 3 duplicate indexes, RLS policies using `auth.uid()` per row → `(select auth.uid())`.
+8. **Columns the code asks for that do not exist:** `creator_profiles.id` (PK is `user_id`; creators_routes.ts:128,1683 locked), `user_sessions.last_active`.
+9. **Cron:** hourly jobs (profile nudges, Eva saved search, Instagram refresh) run on an in-process timer and stop when Cloud Run idles —
+   needs `/internal/cron/*` routes + Cloud Scheduler / pg_cron with an `x-cron-secret`.

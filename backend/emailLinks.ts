@@ -1,6 +1,7 @@
 // Session 36: signed links for "Stop these reminders" and "Unsubscribe" (no login needed, cannot be
 // guessed or changed to another person). HMAC-SHA256 over kind + id with a server secret.
 import crypto from "crypto";
+import { publicSiteUrl } from "./siteUrl"; // v388
 
 function secret(): string | null {
   return process.env.EMAIL_LINK_SECRET || process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || null;
@@ -20,7 +21,7 @@ export function verifyEmailLink(kind: string, id: string, token: string): boolea
 
 export function appBaseUrl(): string {
   if (process.env.VITEST || process.env.NODE_ENV === "test") return "https://ybexmedia.in";
-  return (process.env.APP_URL || "https://ybexmedia.in").replace(/\/$/, "");
+  return publicSiteUrl(); // v388
 }
 
 /** Small HTML page for the result of clicking a link in an email. */

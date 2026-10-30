@@ -56,8 +56,7 @@ export function deriveDealState({ thread: currentThread, messages = [], isBrand 
     currentThread?.is_ugc || currentThread?.ugc_order_id || currentThread?.ugc_brief_id ||
     currentThread?.ugc_order || currentThread?.deal_type === "UGC" || currentThread?.type === "ugc" ||
     currentThread?.ugc_title ||
-    currentThread?.campaign_title?.toLowerCase()?.includes("ugc") ||
-    currentThread?.title?.toLowerCase()?.includes("ugc") ||
+    // v389 (QA, Ravi OK 30 Oct): never decided by the title — a campaign called "UGC Reels for Diwali" is a campaign (type / id only).
     currentThread?.id?.startsWith("ugcord_") || currentThread?.deal_id?.startsWith("ugcord_") ||
     currentThread?.id?.startsWith("thread_ugc_")
   );

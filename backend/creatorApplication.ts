@@ -9,6 +9,7 @@
 import crypto from "crypto";
 import { audienceEstimate } from "../src/utils/audienceEstimate";
 import { shrinkPhoto } from "./imageResize";
+import { publicSiteUrl } from "./siteUrl"; // v388
 
 // Session 35: the real Supabase columns (checked against the live tables, 7 Oct 2026). Supabase
 // refuses a whole insert / upsert when one key is not a column, so every write below sends only
@@ -415,7 +416,7 @@ export async function sendApplicationDecisionEmail(entry: any, decision: "approv
   try {
     const { Resend } = await import("resend");
     const { buildEmailHtml, getValidFromEmail, emailFactsHtml } = await import("./helpers");
-    const appUrl = process.env.APP_URL || "https://ybexmedia.in";
+    const appUrl = publicSiteUrl(); // v388
     const name = String(entry?.name || "there").split(" ")[0];
     const approved = decision === "approved";
     // v373 (Ravi: "claim your profile, brands in your category are waiting"): the creator's own niche in the headline,
